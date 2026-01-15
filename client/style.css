@@ -1,0 +1,22 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+#toolbar {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  background: #f2f2f2;
+  padding: 8px;
+  border-radius: 6px;
+  display: flex;
+  gap: 8px;
+}
+
+canvas {
+  display: block;
+  background: white;
+}

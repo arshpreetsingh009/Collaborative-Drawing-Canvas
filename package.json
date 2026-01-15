@@ -1,0 +1,29 @@
+{
+  "name": "drawingcanvas",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "nodemon server/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arshpreetsingh009/Collaborative-Drawing-Canvas.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/arshpreetsingh009/Collaborative-Drawing-Canvas/issues"
+  },
+  "homepage": "https://github.com/arshpreetsingh009/Collaborative-Drawing-Canvas#readme",
+  "description": "",
+  "dependencies": {
+    "express": "^5.2.1",
+    "uuid": "^13.0.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
