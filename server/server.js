@@ -16,7 +16,7 @@ app.use(express.static(path.join(__dirname, "../client")));
 wss.on("connection", ws => {
   console.log("Client connected");
 
-  // Send current canvas
+ 
   ws.send(JSON.stringify({
     type: "init",
     payload: drawingState.snapshot()
@@ -53,7 +53,6 @@ wss.on("connection", ws => {
   ws.on("message", (raw) => {
     let msg;
 
-    // ✅ SAFE parsing (prevents crashes)
     try {
       msg = JSON.parse(raw.toString());
     } catch (err) {
@@ -61,7 +60,7 @@ wss.on("connection", ws => {
       return;
     }
 
-    // ✅ GUARDED message handling
+    
     switch (msg.type) {
       case "draw":
         broadcast(ws, msg);
@@ -72,21 +71,34 @@ wss.on("connection", ws => {
         broadcast(ws, msg);
         break;
 
-      case "undo":
-        drawingState.undo();
-        broadcast(null, {
-          type: "canvas:reset",
-          payload: drawingState.snapshot()
-        });
-        break;
+      case "undo": {
+  const ok = drawingState.undo();
 
-      case "redo":
-        drawingState.redo();
-        broadcast(null, {
-          type: "canvas:reset",
-          payload: drawingState.snapshot()
-        });
-        break;
+  
+  if (!ok) return;
+
+  broadcast(null, {
+    type: "canvas:reset",
+    payload: drawingState.snapshot()
+  });
+  break;}
+
+
+    case "redo": {
+  const ok = drawingState.redo();
+
+  
+  if (!ok) return;
+
+  broadcast(null, {
+    type: "canvas:reset",
+    payload: drawingState.snapshot()
+  });
+  break;}
+
+
+
+
 
       default:
         console.warn("Unknown message type:", msg.type);

@@ -15,6 +15,15 @@ class DrawingState {
     this.undone.push(s);
     return s;
   }
+  redo() {
+  if (this.undone.length === 0) {
+    return null;
+  }
+  const stroke = this.undone.pop();
+  this.strokes.push(stroke);
+  return stroke;
+}
+
 
   snapshot() {
     return this.strokes;

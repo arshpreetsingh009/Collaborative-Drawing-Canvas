@@ -4,7 +4,7 @@ import { ws, send } from "./websocket.js";
 const canvas = document.getElementById("canvas");
 const ctx = setupCanvas(canvas);
 
-// UI
+
 const brushBtn = document.getElementById("brushBtn");
 const eraserBtn = document.getElementById("eraserBtn");
 const colorPicker = document.getElementById("colorPicker");
@@ -21,7 +21,7 @@ redoBtn.addEventListener("click", () => {
 });
 
 
-// tool state
+
 const toolState = {
   mode: "brush",
   color: "#000000",
@@ -33,20 +33,20 @@ eraserBtn.onclick = () => (toolState.mode = "eraser");
 colorPicker.oninput = e => (toolState.color = e.target.value);
 sizePicker.oninput = e => (toolState.size = Number(e.target.value));
 
-// websocket readiness
+
 let wsReady = false;
 ws.onopen = () => {
   wsReady = true;
   console.log("WebSocket connected");
 };
 
-// drawing state
+
 let drawing = false;
 let lastPoint = null;
 let currentStroke = null;
 let strokes = [];
 
-// mouse events
+
 canvas.addEventListener("mousedown", e => {
   drawing = true;
 
@@ -67,13 +67,13 @@ canvas.addEventListener("mousemove", e => {
 
   const currentPoint = { x: e.offsetX, y: e.offsetY };
 
-  // draw locally
+  
   drawSegment(ctx, lastPoint, currentPoint, currentStroke);
 
-  // store stroke point
+  
   currentStroke.points.push(currentPoint);
 
-  // stream to others (real-time)
+  
   if (wsReady) {
     send("draw", {
       from: lastPoint,
@@ -108,7 +108,6 @@ canvas.addEventListener("mouseleave", () => {
   lastPoint = null;
 });
 
-// undo / redo
 window.addEventListener("keydown", e => {
   if (e.ctrlKey && e.key === "z") {
     e.preventDefault();
@@ -121,13 +120,25 @@ window.addEventListener("keydown", e => {
   }
 });
 
-// receive remote drawing
+
 ws.onmessage = e => {
   const msg = JSON.parse(e.data);
 
   if (msg.type === "draw") {
     drawSegment(ctx, msg.payload.from, msg.payload.to, msg.payload);
   }
+  if (msg.type === "init") {
+  strokes = msg.payload;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (const stroke of strokes) {
+    for (let i = 1; i < stroke.points.length; i++) {
+      drawSegment(ctx, stroke.points[i - 1], stroke.points[i], stroke);
+    }
+  }
+}
+
 
   if (msg.type === "canvas:reset") {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
