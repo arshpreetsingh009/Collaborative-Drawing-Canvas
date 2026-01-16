@@ -11,7 +11,7 @@ export function setupCanvas(canvas) {
 }
 
 export function drawSegment(ctx, p1, p2, options) {
-  // ⚠️ CANVAS STATE MUST BE SET EVERY TIME
+ 
   ctx.globalCompositeOperation =
     options.tool === "eraser"
       ? "destination-out"
@@ -25,3 +25,5 @@ export function drawSegment(ctx, p1, p2, options) {
   ctx.lineTo(p2.x, p2.y);
   ctx.stroke();
 }
+
+
