@@ -1,66 +1,41 @@
-const DrawingState = require("./drawing-state");
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const path = require("path");
+const DrawingState = require("./drawing-state");
 
 const app = express();
-const drawingState = new DrawingState();
-
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+const drawingState = new DrawingState();
 
 app.use(express.static(path.join(__dirname, "../client")));
 
-wss.on("connection", ws => {
-  console.log("Client connected");
+function broadcast(sender, message) {
+  const data = JSON.stringify(message);
 
- 
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN && client !== sender) {
+      client.send(data);
+    }
+  });
+}
+
+wss.on("connection", (ws) => {
   ws.send(JSON.stringify({
-    type: "init",
+    type: "canvas:init",
     payload: drawingState.snapshot()
   }));
 
-  ws.on("message", msg => {
-    const data = JSON.parse(msg.toString());
-
-    switch (data.type) {
-      case "stroke:add":
-        drawingState.addStroke(data.payload);
-        broadcast(ws, data);
-        break;
-
-      case "undo":
-        drawingState.undo();
-        broadcast(null, {
-          type: "canvas:reset",
-          payload: drawingState.snapshot()
-        });
-        break;
-
-      case "redo":
-        drawingState.redo();
-        broadcast(null, {
-          type: "canvas:reset",
-          payload: drawingState.snapshot()
-        });
-        break;
-    }
-    wss.on("connection", (ws) => {
-  console.log("Client connected");
-
   ws.on("message", (raw) => {
     let msg;
-
     try {
       msg = JSON.parse(raw.toString());
-    } catch (err) {
-      console.error("Invalid JSON", err);
+    } catch {
       return;
     }
 
-    
     switch (msg.type) {
       case "draw":
         broadcast(ws, msg);
@@ -71,65 +46,26 @@ wss.on("connection", ws => {
         broadcast(ws, msg);
         break;
 
-      case "undo": {
-  const ok = drawingState.undo();
+      case "undo":
+        if (drawingState.strokes.length === 0) return;
+        drawingState.undo();
+        broadcast(null, {
+          type: "canvas:reset",
+          payload: drawingState.snapshot()
+        });
+        break;
 
-  
-  if (!ok) return;
-
-  broadcast(null, {
-    type: "canvas:reset",
-    payload: drawingState.snapshot()
-  });
-  break;}
-
-
-    case "redo": {
-  const ok = drawingState.redo();
-
-  
-  if (!ok) return;
-
-  broadcast(null, {
-    type: "canvas:reset",
-    payload: drawingState.snapshot()
-  });
-  break;}
-
-
-
-
-
-      default:
-        console.warn("Unknown message type:", msg.type);
+      case "redo":
+        if (drawingState.undone.length === 0) return;
+        drawingState.redo();
+        broadcast(null, {
+          type: "canvas:reset",
+          payload: drawingState.snapshot()
+        });
+        break;
     }
-  });
-
-  ws.on("close", () => {
-    console.log("Client disconnected");
   });
 });
-
-
-  });
-});
-function broadcast(sender, message) {
-  const data = JSON.stringify(message);
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN && client !== sender) {
-      client.send(data);
-    }
-  });
-}
-function redraw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (const stroke of strokes) {
-    for (let i = 1; i < stroke.points.length; i++) {
-      drawSegment(ctx, stroke.points[i - 1], stroke.points[i], stroke);
-    }
-  }
-}
-
 
 server.listen(3000, () => {
   console.log("🚀 Server running on http://localhost:3000");

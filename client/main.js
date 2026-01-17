@@ -13,10 +13,12 @@ const undoBtn = document.getElementById("undoBtn");
 const redoBtn = document.getElementById("redoBtn");
 
 undoBtn.addEventListener("click", () => {
+  if (drawing) return;
   send("undo");
 });
 
 redoBtn.addEventListener("click", () => {
+  if (drawing) return;
   send("redo");
 });
 
@@ -141,13 +143,26 @@ ws.onmessage = e => {
 
 
   if (msg.type === "canvas:reset") {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    strokes = msg.payload;
+ 
+  strokes = msg.payload;
 
-    for (const stroke of strokes) {
-      for (let i = 1; i < stroke.points.length; i++) {
-        drawSegment(ctx, stroke.points[i - 1], stroke.points[i], stroke);
-      }
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (const stroke of strokes) {
+    for (let i = 1; i < stroke.points.length; i++) {
+      drawSegment(
+        ctx,
+        stroke.points[i - 1],
+        stroke.points[i],
+        stroke
+      );
     }
   }
+
+  currentStroke = null;
+  drawing = false;
+  lastPoint = null;
+}
+
 };
