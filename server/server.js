@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const path = require("path");
+const crypto = require("crypto");
 const DrawingState = require("./drawing-state");
 
 const app = express();
@@ -9,12 +10,16 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const drawingState = new DrawingState();
+const users = new Map();
+
+function randomColor() {
+  return `hsl(${Math.random() * 360}, 70%, 50%)`;
+}
 
 app.use(express.static(path.join(__dirname, "../client")));
 
 function broadcast(sender, message) {
   const data = JSON.stringify(message);
-
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN && client !== sender) {
       client.send(data);
@@ -22,13 +27,40 @@ function broadcast(sender, message) {
   });
 }
 
-wss.on("connection", (ws) => {
+function broadcastUsers() {
+  broadcast(null, {
+    type: "users:update",
+    payload: Array.from(users.values())
+  });
+}
+
+wss.on("connection", ws => {
+  console.log("🔌 Client connected");
+
+ 
+  const user = {
+    id: crypto.randomUUID(),
+    color: randomColor()
+  };
+
+  users.set(ws, user);
+
+
   ws.send(JSON.stringify({
-    type: "canvas:init",
+    type: "user:init",
+    payload: user
+  }));
+
+  
+  ws.send(JSON.stringify({
+    type: "init",
     payload: drawingState.snapshot()
   }));
 
-  ws.on("message", (raw) => {
+  
+  broadcastUsers();
+
+  ws.on("message", raw => {
     let msg;
     try {
       msg = JSON.parse(raw.toString());
@@ -37,11 +69,18 @@ wss.on("connection", (ws) => {
     }
 
     switch (msg.type) {
+      case "cursor":
+        if (!msg.payload) return;
+        broadcast(ws, msg);
+        break;
+
       case "draw":
+        if (!msg.payload) return;
         broadcast(ws, msg);
         break;
 
       case "stroke:add":
+        if (!msg.payload?.points) return;
         drawingState.addStroke(msg.payload);
         broadcast(ws, msg);
         break;
@@ -64,6 +103,12 @@ wss.on("connection", (ws) => {
         });
         break;
     }
+  });
+
+  ws.on("close", () => {
+    console.log("❌ Client disconnected");
+    users.delete(ws);
+    broadcastUsers();
   });
 });
 
