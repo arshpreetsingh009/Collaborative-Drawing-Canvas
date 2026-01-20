@@ -1,9 +1,15 @@
 import { setupCanvas, drawSegment } from "./canvas.js";
 import { ws, send } from "./websocket.js";
 
-const canvas = document.getElementById("canvas");
-const ctx = setupCanvas(canvas);
+/* ---------- CANVASES ---------- */
 
+const drawCanvas = document.getElementById("drawCanvas");
+const overlayCanvas = document.getElementById("overlayCanvas");
+
+const drawCtx = setupCanvas(drawCanvas);
+const overlayCtx = setupCanvas(overlayCanvas);
+
+/* ---------- UI ---------- */
 
 const brushBtn = document.getElementById("brushBtn");
 const eraserBtn = document.getElementById("eraserBtn");
@@ -13,6 +19,7 @@ const undoBtn = document.getElementById("undoBtn");
 const redoBtn = document.getElementById("redoBtn");
 const usersEl = document.getElementById("users");
 
+/* ---------- STATE ---------- */
 
 const toolState = {
   mode: "brush",
@@ -20,144 +27,49 @@ const toolState = {
   size: 4
 };
 
+let wsReady = false;
+let myUser = null;
+let onlineUsers = [];
+
+let drawing = false;
+let lastPoint = null;
+let currentStroke = null;
+
+let strokes = [];
+const cursors = {};
+
+/* ---------- TOOL CONTROLS ---------- */
+
 brushBtn.onclick = () => (toolState.mode = "brush");
 eraserBtn.onclick = () => (toolState.mode = "eraser");
 colorPicker.oninput = e => (toolState.color = e.target.value);
 sizePicker.oninput = e => (toolState.size = Number(e.target.value));
 
+undoBtn.onclick = () => !drawing && send("undo");
+redoBtn.onclick = () => !drawing && send("redo");
 
-let wsReady = false;
-ws.onopen = () => {
-  wsReady = true;
-};
+/* ---------- RESIZE ---------- */
 
-
-let myUser = null;
-let onlineUsers = [];
-const cursors = {};
-
-let drawing = false;
-let lastPoint = null;
-let currentStroke = null;
-let strokes = [];
-
-undoBtn.onclick = () => {
-  if (!drawing) send("undo");
-};
-
-redoBtn.onclick = () => {
-  if (!drawing) send("redo");
-};
-
-function drawCursors() {
-  Object.values(cursors).forEach(c => {
-    if(!c) return;
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, 4, 0, Math.PI * 2);
-    ctx.fillStyle = c.color || "red";
-    ctx.fill();
-  });
+function resizeCanvases() {
+  drawCanvas.width = window.innerWidth;
+  drawCanvas.height = window.innerHeight;
+  overlayCanvas.width = window.innerWidth;
+  overlayCanvas.height = window.innerHeight;
 }
 
+resizeCanvases();
+window.addEventListener("resize", resizeCanvases);
 
-function renderUserList() {
-  usersEl.innerHTML = "";
-  onlineUsers.forEach(u => {
-    const div = document.createElement("div");
-    div.textContent = u.id.slice(0, 5);
-    div.style.color = u.color;
-    usersEl.appendChild(div);
-  });
-}
+/* ---------- SOCKET ---------- */
 
-
-
-canvas.addEventListener("mousedown", e => {
-  drawing = true;
-  const point = { x: e.offsetX, y: e.offsetY };
-  lastPoint = point;
-
-  currentStroke = {
-    id: crypto.randomUUID(),
-    tool: toolState.mode,
-    color: toolState.color,
-    width: toolState.size,
-    points: [point]
-  };
-});
-
-
-canvas.addEventListener("mousemove", e => {
-  if (!wsReady || !myUser) return;
-
- 
-  send("cursor", {
-    userId: myUser.id,
-    x: e.offsetX,
-    y: e.offsetY
-    color:myUser.color
-  });
-
-  if (!drawing || !currentStroke) return;
-
-  const currentPoint = { x: e.offsetX, y: e.offsetY };
-
-  drawSegment(ctx, lastPoint, currentPoint, currentStroke);
-  currentStroke.points.push(currentPoint);
-
-  send("draw", {
-    from: lastPoint,
-    to: currentPoint,
-    strokeId: currentStroke.id,
-    tool: currentStroke.tool,
-    color: currentStroke.color,
-    width: currentStroke.width
-  });
-
-  lastPoint = currentPoint;
-});
-
-
-canvas.addEventListener("mouseup", () => {
-  if (!currentStroke) return;
-
-  strokes.push(currentStroke);
-  send("stroke:add", currentStroke);
-
-  drawing = false;
-  currentStroke = null;
-  lastPoint = null;
-});
-
-
-canvas.addEventListener("mouseleave", () => {
-  drawing = false;
-  currentStroke = null;
-  lastPoint = null;
-});
-
-
-window.addEventListener("keydown", e => {
-  if (drawing) return;
-
-  if (e.ctrlKey && e.key === "z") {
-    e.preventDefault();
-    send("undo");
-  }
-
-  if (e.ctrlKey && (e.key === "y" || (e.shiftKey && e.key === "Z"))) {
-    e.preventDefault();
-    send("redo");
-  }
-});
-
+ws.onopen = () => (wsReady = true);
 
 ws.onmessage = e => {
   const msg = JSON.parse(e.data);
 
   if (msg.type === "init") {
     strokes = msg.payload;
-    redraw();
+    redrawDrawLayer();
   }
 
   if (msg.type === "user:init") {
@@ -172,30 +84,151 @@ ws.onmessage = e => {
 
   if (msg.type === "cursor") {
     cursors[msg.payload.userId] = msg.payload;
-    redraw();
+    redrawOverlay();
   }
 
   if (msg.type === "draw") {
-    drawSegment(ctx, msg.payload.from, msg.payload.to, msg.payload);
+    drawSegment(drawCtx, msg.payload.from, msg.payload.to, msg.payload);
+  }
+
+  if (msg.type === "stroke:add") {
+    strokes.push(msg.payload);
   }
 
   if (msg.type === "canvas:reset") {
     strokes = msg.payload;
-    redraw();
+    redrawDrawLayer();
   }
 };
 
-function redraw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+/* ---------- DRAWING EVENTS ---------- */
 
-  for (const stroke of strokes) {
-    for (let i = 1; i < stroke.points.length; i++) {
-      drawSegment(ctx, stroke.points[i - 1], stroke.points[i], stroke);
-    }
+drawCanvas.addEventListener("mousedown", e => {
+  drawing = true;
+
+  const point = { x: e.offsetX, y: e.offsetY };
+  lastPoint = point;
+
+  currentStroke = {
+    id: crypto.randomUUID(),
+    tool: toolState.mode,
+    color: toolState.color,
+    width: toolState.size,
+    points: [point]
+  };
+});
+
+drawCanvas.addEventListener("mousemove", e => {
+  // Cursor update (even if not drawing)
+  if (myUser && wsReady) {
+    cursors[myUser.id] = {
+      userId: myUser.id,
+      x: e.offsetX,
+      y: e.offsetY,
+      drawing,
+      tool: toolState.mode,
+      size: toolState.size,
+      color: toolState.color
+    };
+    send("cursor", cursors[myUser.id]);
+    redrawOverlay();
   }
+
+  if (!drawing || !currentStroke) return;
+
+  const currentPoint = { x: e.offsetX, y: e.offsetY };
+
+  // LOCAL IMMEDIATE DRAW
+  drawSegment(drawCtx, lastPoint, currentPoint, currentStroke);
+  currentStroke.points.push(currentPoint);
+
+  // STREAM TO OTHERS
+  if (wsReady) {
+    send("draw", {
+      from: lastPoint,
+      to: currentPoint,
+      strokeId: currentStroke.id,
+      tool: currentStroke.tool,
+      color: currentStroke.color,
+      width: currentStroke.width
+    });
+  }
+
+  lastPoint = currentPoint;
+});
+
+drawCanvas.addEventListener("mouseup", finishStroke);
+drawCanvas.addEventListener("mouseleave", finishStroke);
+
+function finishStroke() {
+  if (!currentStroke) return;
+
+  strokes.push(currentStroke);
+  if (wsReady) send("stroke:add", currentStroke);
 
   drawing = false;
   currentStroke = null;
   lastPoint = null;
+}
+
+/* ---------- RENDERING ---------- */
+
+function redrawDrawLayer() {
+  drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  for (const stroke of strokes) {
+    for (let i = 1; i < stroke.points.length; i++) {
+      drawSegment(drawCtx, stroke.points[i - 1], stroke.points[i], stroke);
+    }
+  }
+}
+
+function redrawOverlay() {
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
   drawCursors();
+}
+
+/* ---------- CURSORS ---------- */
+
+function drawCursors() {
+  Object.values(cursors).forEach(c => {
+    if (!c) return;
+
+    if (c.tool === "eraser") {
+      overlayCtx.strokeStyle = "#000";
+      overlayCtx.strokeRect(
+        c.x - c.size / 2,
+        c.y - c.size / 2,
+        c.size,
+        c.size
+      );
+    } else if (c.drawing) {
+      overlayCtx.save();
+      overlayCtx.translate(c.x, c.y);
+      overlayCtx.rotate(-Math.PI / 4);
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(0, 0);
+      overlayCtx.lineTo(12, 0);
+      overlayCtx.strokeStyle = c.color;
+      overlayCtx.lineWidth = 2;
+      overlayCtx.stroke();
+      overlayCtx.restore();
+    } else {
+      overlayCtx.beginPath();
+      overlayCtx.arc(c.x, c.y, 4, 0, Math.PI * 2);
+      overlayCtx.fillStyle = c.color;
+      overlayCtx.fill();
+    }
+  });
+}
+
+/* ---------- USERS ---------- */
+
+function renderUserList() {
+  usersEl.innerHTML = "";
+  onlineUsers.forEach(u => {
+    const div = document.createElement("div");
+    div.textContent = u.id.slice(0, 5);
+    div.style.color = u.color;
+    usersEl.appendChild(div);
+  });
 }

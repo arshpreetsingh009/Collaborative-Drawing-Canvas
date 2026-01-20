@@ -11,7 +11,8 @@ export function setupCanvas(canvas) {
 }
 
 export function drawSegment(ctx, p1, p2, options) {
- 
+  ctx.save(); // isolate canvas state
+
   ctx.globalCompositeOperation =
     options.tool === "eraser"
       ? "destination-out"
@@ -24,6 +25,6 @@ export function drawSegment(ctx, p1, p2, options) {
   ctx.moveTo(p1.x, p1.y);
   ctx.lineTo(p2.x, p2.y);
   ctx.stroke();
+
+  ctx.restore(); // restore state
 }
-
-
