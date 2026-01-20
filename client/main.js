@@ -49,6 +49,16 @@ redoBtn.onclick = () => {
   if (!drawing) send("redo");
 };
 
+function drawCursors() {
+  Object.values(cursors).forEach(c => {
+    if(!c) return;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = c.color || "red";
+    ctx.fill();
+  });
+}
+
 
 function renderUserList() {
   usersEl.innerHTML = "";
@@ -59,6 +69,7 @@ function renderUserList() {
     usersEl.appendChild(div);
   });
 }
+
 
 
 canvas.addEventListener("mousedown", e => {
@@ -84,6 +95,7 @@ canvas.addEventListener("mousemove", e => {
     userId: myUser.id,
     x: e.offsetX,
     y: e.offsetY
+    color:myUser.color
   });
 
   if (!drawing || !currentStroke) return;
@@ -160,6 +172,7 @@ ws.onmessage = e => {
 
   if (msg.type === "cursor") {
     cursors[msg.payload.userId] = msg.payload;
+    redraw();
   }
 
   if (msg.type === "draw") {
@@ -171,7 +184,6 @@ ws.onmessage = e => {
     redraw();
   }
 };
-
 
 function redraw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -185,4 +197,5 @@ function redraw() {
   drawing = false;
   currentStroke = null;
   lastPoint = null;
+  drawCursors();
 }
