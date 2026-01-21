@@ -1,15 +1,11 @@
-import { setupCanvas, drawSegment } from "./canvas.js";
+import { setupCanvas } from "./canvas.js";
 import { ws, send } from "./websocket.js";
-
-
 
 const drawCanvas = document.getElementById("drawCanvas");
 const overlayCanvas = document.getElementById("overlayCanvas");
 
 const drawCtx = setupCanvas(drawCanvas);
 const overlayCtx = setupCanvas(overlayCanvas);
-
-
 
 const brushBtn = document.getElementById("brushBtn");
 const eraserBtn = document.getElementById("eraserBtn");
@@ -18,8 +14,6 @@ const sizePicker = document.getElementById("sizePicker");
 const undoBtn = document.getElementById("undoBtn");
 const redoBtn = document.getElementById("redoBtn");
 const usersEl = document.getElementById("users");
-
-
 
 const toolState = {
   mode: "brush",
@@ -32,13 +26,12 @@ let myUser = null;
 let onlineUsers = [];
 
 let drawing = false;
-let lastPoint = null;
-let currentStroke = null;
+let points = [];
+let rafPending = false;
 
+let currentStroke = null;
 let strokes = [];
 const cursors = {};
-
-
 
 brushBtn.onclick = () => (toolState.mode = "brush");
 eraserBtn.onclick = () => (toolState.mode = "eraser");
@@ -47,8 +40,6 @@ sizePicker.oninput = e => (toolState.size = Number(e.target.value));
 
 undoBtn.onclick = () => !drawing && send("undo");
 redoBtn.onclick = () => !drawing && send("redo");
-
-
 
 function resizeCanvases() {
   drawCanvas.width = window.innerWidth;
@@ -59,8 +50,6 @@ function resizeCanvases() {
 
 resizeCanvases();
 window.addEventListener("resize", resizeCanvases);
-
-
 
 ws.onopen = () => (wsReady = true);
 
@@ -88,11 +77,12 @@ ws.onmessage = e => {
   }
 
   if (msg.type === "draw") {
-    drawSegment(drawCtx, msg.payload.from, msg.payload.to, msg.payload);
+    drawBezier(drawCtx, msg.payload.from, msg.payload.mid, msg.payload.to, msg.payload);
   }
 
   if (msg.type === "stroke:add") {
     strokes.push(msg.payload);
+    redrawDrawLayer();
   }
 
   if (msg.type === "canvas:reset") {
@@ -101,83 +91,151 @@ ws.onmessage = e => {
   }
 };
 
-
-
 drawCanvas.addEventListener("mousedown", e => {
   drawing = true;
+  points = [];
 
-  const point = { x: e.offsetX, y: e.offsetY };
-  lastPoint = point;
+  const p = { x: e.offsetX, y: e.offsetY };
+  points.push(p);
 
   currentStroke = {
     id: crypto.randomUUID(),
     tool: toolState.mode,
     color: toolState.color,
     width: toolState.size,
-    points: [point]
+    points: [p]
   };
 });
 
 drawCanvas.addEventListener("mousemove", e => {
-  
-  if (myUser && wsReady) {
-    cursors[myUser.id] = {
-      userId: myUser.id,
-      x: e.offsetX,
-      y: e.offsetY,
-      drawing,
-      tool: toolState.mode,
-      size: toolState.size,
-      color: toolState.color
-    };
-    send("cursor", cursors[myUser.id]);
-    redrawOverlay();
-  }
+  if (!wsReady || !myUser) return;
+
+  cursors[myUser.id] = {
+    userId: myUser.id,
+    x: e.offsetX,
+    y: e.offsetY,
+    drawing,
+    tool: toolState.mode,
+    size: toolState.size,
+    color: toolState.color
+  };
+
+  send("cursor", cursors[myUser.id]);
+  redrawOverlay();
 
   if (!drawing || !currentStroke) return;
 
-  const currentPoint = { x: e.offsetX, y: e.offsetY };
+  const newPoint = { x: e.offsetX, y: e.offsetY };
 
-  
-  drawSegment(drawCtx, lastPoint, currentPoint, currentStroke);
-  currentStroke.points.push(currentPoint);
+const last = points[points.length - 1];
+const dense = last
+  ? interpolatePoints(last, newPoint)
+  : [newPoint];
+
+points.push(...dense);
 
 
-  if (wsReady) {
+  if (!rafPending) {
+    rafPending = true;
+    requestAnimationFrame(processStroke);
+  }
+});
+
+drawCanvas.addEventListener("mouseup", finishStroke);
+drawCanvas.addEventListener("mouseleave", finishStroke);
+
+function interpolatePoints(p1, p2, maxDist = 4) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const dist = Math.hypot(dx, dy);
+
+  if (dist <= maxDist) return [p2];
+
+  const steps = Math.ceil(dist / maxDist);
+  const pts = [];
+
+  for (let i = 1; i <= steps; i++) {
+    pts.push({
+      x: p1.x + (dx * i) / steps,
+      y: p1.y + (dy * i) / steps
+    });
+  }
+
+  return pts;
+}
+
+
+function processStroke() {
+  rafPending = false;
+
+  while (points.length >= 3) {
+    const p0 = points.shift();
+    const p1 = points[0];
+    const p2 = points[1];
+
+    drawBezier(drawCtx, p0, p1, p2, currentStroke);
+
+    currentStroke.points.push(p2);
+
     send("draw", {
-      from: lastPoint,
-      to: currentPoint,
+      from: p0,
+      mid: p1,
+      to: p2,
       strokeId: currentStroke.id,
       tool: currentStroke.tool,
       color: currentStroke.color,
       width: currentStroke.width
     });
   }
+}
 
-  lastPoint = currentPoint;
-});
-
-drawCanvas.addEventListener("mouseup", finishStroke);
-drawCanvas.addEventListener("mouseleave", finishStroke);
 
 function finishStroke() {
   if (!currentStroke) return;
 
   strokes.push(currentStroke);
-  if (wsReady) send("stroke:add", currentStroke);
+  send("stroke:add", currentStroke);
 
   drawing = false;
   currentStroke = null;
-  lastPoint = null;
+  points = [];
 }
 
+function drawBezier(ctx, p0, p1, p2, options) {
+  ctx.save();
 
+  ctx.globalCompositeOperation =
+    options.tool === "eraser" ? "destination-out" : "source-over";
+
+  ctx.strokeStyle = options.color;
+  ctx.lineWidth = options.width;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  ctx.beginPath();
+  ctx.moveTo(p0.x, p0.y);
+  ctx.bezierCurveTo(
+    p1.x, p1.y,
+    p1.x, p1.y,
+    p2.x, p2.y
+  );
+  ctx.stroke();
+
+  ctx.restore();
+}
 
 function redrawDrawLayer() {
   drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+
   for (const stroke of strokes) {
-    for (let i = 1; i < stroke.points.length; i++) {
-      drawSegment(drawCtx, stroke.points[i - 1], stroke.points[i], stroke);
+    for (let i = 2; i < stroke.points.length; i++) {
+      drawBezier(
+        drawCtx,
+        stroke.points[i - 2],
+        stroke.points[i - 1],
+        stroke.points[i],
+        stroke
+      );
     }
   }
 }
@@ -186,8 +244,6 @@ function redrawOverlay() {
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
   drawCursors();
 }
-
-
 
 function drawCursors() {
   Object.values(cursors).forEach(c => {
@@ -220,8 +276,6 @@ function drawCursors() {
     }
   });
 }
-
-
 
 function renderUserList() {
   usersEl.innerHTML = "";

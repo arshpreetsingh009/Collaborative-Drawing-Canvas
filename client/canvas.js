@@ -10,7 +10,8 @@ export function setupCanvas(canvas) {
   return ctx;
 }
 
-export function drawSegment(ctx, p1, p2, options) {
+
+export function drawBezier(ctx, p0, p1, p2, options) {
   ctx.save();
 
   ctx.globalCompositeOperation =
@@ -23,12 +24,13 @@ export function drawSegment(ctx, p1, p2, options) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  const midX = (p1.x + p2.x) / 2;
-  const midY = (p1.y + p2.y) / 2;
-
   ctx.beginPath();
-  ctx.moveTo(p1.x, p1.y);
-  ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
+  ctx.moveTo(p0.x, p0.y);
+  ctx.bezierCurveTo(
+    p1.x, p1.y,
+    p1.x, p1.y,
+    p2.x, p2.y
+  );
   ctx.stroke();
 
   ctx.restore();
