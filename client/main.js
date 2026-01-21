@@ -1,7 +1,7 @@
 import { setupCanvas, drawSegment } from "./canvas.js";
 import { ws, send } from "./websocket.js";
 
-/* ---------- CANVASES ---------- */
+
 
 const drawCanvas = document.getElementById("drawCanvas");
 const overlayCanvas = document.getElementById("overlayCanvas");
@@ -9,7 +9,7 @@ const overlayCanvas = document.getElementById("overlayCanvas");
 const drawCtx = setupCanvas(drawCanvas);
 const overlayCtx = setupCanvas(overlayCanvas);
 
-/* ---------- UI ---------- */
+
 
 const brushBtn = document.getElementById("brushBtn");
 const eraserBtn = document.getElementById("eraserBtn");
@@ -19,7 +19,7 @@ const undoBtn = document.getElementById("undoBtn");
 const redoBtn = document.getElementById("redoBtn");
 const usersEl = document.getElementById("users");
 
-/* ---------- STATE ---------- */
+
 
 const toolState = {
   mode: "brush",
@@ -38,7 +38,7 @@ let currentStroke = null;
 let strokes = [];
 const cursors = {};
 
-/* ---------- TOOL CONTROLS ---------- */
+
 
 brushBtn.onclick = () => (toolState.mode = "brush");
 eraserBtn.onclick = () => (toolState.mode = "eraser");
@@ -48,7 +48,7 @@ sizePicker.oninput = e => (toolState.size = Number(e.target.value));
 undoBtn.onclick = () => !drawing && send("undo");
 redoBtn.onclick = () => !drawing && send("redo");
 
-/* ---------- RESIZE ---------- */
+
 
 function resizeCanvases() {
   drawCanvas.width = window.innerWidth;
@@ -60,7 +60,7 @@ function resizeCanvases() {
 resizeCanvases();
 window.addEventListener("resize", resizeCanvases);
 
-/* ---------- SOCKET ---------- */
+
 
 ws.onopen = () => (wsReady = true);
 
@@ -101,7 +101,7 @@ ws.onmessage = e => {
   }
 };
 
-/* ---------- DRAWING EVENTS ---------- */
+
 
 drawCanvas.addEventListener("mousedown", e => {
   drawing = true;
@@ -119,7 +119,7 @@ drawCanvas.addEventListener("mousedown", e => {
 });
 
 drawCanvas.addEventListener("mousemove", e => {
-  // Cursor update (even if not drawing)
+  
   if (myUser && wsReady) {
     cursors[myUser.id] = {
       userId: myUser.id,
@@ -138,11 +138,11 @@ drawCanvas.addEventListener("mousemove", e => {
 
   const currentPoint = { x: e.offsetX, y: e.offsetY };
 
-  // LOCAL IMMEDIATE DRAW
+  
   drawSegment(drawCtx, lastPoint, currentPoint, currentStroke);
   currentStroke.points.push(currentPoint);
 
-  // STREAM TO OTHERS
+
   if (wsReady) {
     send("draw", {
       from: lastPoint,
@@ -171,7 +171,7 @@ function finishStroke() {
   lastPoint = null;
 }
 
-/* ---------- RENDERING ---------- */
+
 
 function redrawDrawLayer() {
   drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
@@ -187,7 +187,7 @@ function redrawOverlay() {
   drawCursors();
 }
 
-/* ---------- CURSORS ---------- */
+
 
 function drawCursors() {
   Object.values(cursors).forEach(c => {
@@ -221,7 +221,7 @@ function drawCursors() {
   });
 }
 
-/* ---------- USERS ---------- */
+
 
 function renderUserList() {
   usersEl.innerHTML = "";

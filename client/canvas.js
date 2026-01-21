@@ -11,7 +11,7 @@ export function setupCanvas(canvas) {
 }
 
 export function drawSegment(ctx, p1, p2, options) {
-  ctx.save(); // isolate canvas state
+  ctx.save();
 
   ctx.globalCompositeOperation =
     options.tool === "eraser"
@@ -20,11 +20,17 @@ export function drawSegment(ctx, p1, p2, options) {
 
   ctx.strokeStyle = options.color;
   ctx.lineWidth = options.width;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  const midX = (p1.x + p2.x) / 2;
+  const midY = (p1.y + p2.y) / 2;
 
   ctx.beginPath();
   ctx.moveTo(p1.x, p1.y);
-  ctx.lineTo(p2.x, p2.y);
+  ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
   ctx.stroke();
 
-  ctx.restore(); // restore state
+  ctx.restore();
 }
+
